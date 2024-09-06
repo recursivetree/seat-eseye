@@ -27,6 +27,7 @@ use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
+use Seat\Eseye\Access\AccessTokenRefresherInterface;
 use Seat\Eseye\Containers\EsiConfiguration;
 use Seat\Eseye\Exceptions\InvalidConfigurationException;
 
@@ -86,6 +87,11 @@ class Configuration
      * @var \Psr\Http\Message\RequestFactoryInterface|string|null
      */
     protected RequestFactoryInterface|string|null $http_request_factory = null;
+
+    /**
+     * @var AccessTokenRefresherInterface|null
+     */
+    protected AccessTokenRefresherInterface|null $access_token_refresher = null;
 
     /**
      * @var EsiConfiguration
@@ -161,6 +167,16 @@ class Configuration
         }
 
         return $this->cache;
+    }
+
+    public function getAccessTokenRefresher(): AccessTokenRefresherInterface
+    {
+        if (! $this->access_token_refresher) {
+            $this->access_token_refresher = is_string($this->configuration->access_token_refresher) ?
+                new $this->configuration->access_token_refresher : $this->configuration->access_token_refresher;
+        }
+
+        return $this->access_token_refresher;
     }
 
     /**

@@ -29,6 +29,7 @@ use Psr\Http\Message\RequestFactoryInterface;
 use Psr\Http\Message\StreamFactoryInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
+use Seat\Eseye\Access\AccessTokenRefresherInterface;
 use Seat\Eseye\Checker\EsiTokenValidator;
 use Seat\Eseye\Configuration;
 use Seat\Eseye\Containers\EsiAuthentication;
@@ -58,6 +59,11 @@ class Fetcher implements FetcherInterface
      * @var \Psr\Log\LoggerInterface
      */
     protected LoggerInterface $logger;
+
+    /**
+     * @var AccessTokenRefresherInterface
+     */
+    protected AccessTokenRefresherInterface $access_token_refresher;
 
     /**
      * @var string
@@ -92,6 +98,7 @@ class Fetcher implements FetcherInterface
         $this->client = Configuration::getInstance()->getHttpClient();
         $this->stream_factory = Configuration::getInstance()->getHttpStreamFactory();
         $this->request_factory = Configuration::getInstance()->getHttpRequestFactory();
+        $this->access_token_refresher = Configuration::getInstance()->getAccessTokenRefresher();
 
         // Init SSO base URI
         $this->sso_base = sprintf('%s://%s:%d/v2/oauth',
@@ -166,88 +173,11 @@ class Fetcher implements FetcherInterface
             throw new InvalidAuthenticationException(
                 'Trying to get a token without authentication data.');
 
-        // Check the expiry date.
-        $expires = carbon($this->getAuthentication()->token_expires);
-
-        // If the token expires in the next minute, refresh it.
-        if ($expires->lte(carbon('now')->addMinute()))
-            $this->refreshToken();
+        // make sure our access token is up-to-date
+        $authentication = $this->access_token_refresher->getValidAccessToken($this->getAuthentication());
+        $this->setAuthentication($authentication);
 
         return $this->getAuthentication()->access_token;
-    }
-
-    /**
-     * Refresh the Access token that we have in the EsiAccess container.
-     *
-     * @throws \Seat\Eseye\Exceptions\InvalidContainerDataException
-     * @throws \Psr\Http\Client\ClientExceptionInterface
-     * @throws \Seat\Eseye\Exceptions\RequestFailedException
-     * @throws \Seat\Eseye\Exceptions\DiscoverServiceNotAvailableException
-     * @throws \Seat\Eseye\Exceptions\InvalidAuthenticationException
-     */
-    private function refreshToken(): void
-    {
-        // Make the post request for a new access_token
-        $stream = $this->stream_factory->createStream($this->getRefreshTokenForm());
-
-        $request = $this->request_factory->createRequest('POST', $this->sso_base . '/token')
-            ->withHeader('Authorization', $this->getBasicAuthorizationHeader())
-            ->withHeader('User-Agent', 'Eseye/' . Eseye::VERSION . '/' . Configuration::getInstance()->http_user_agent)
-            ->withHeader('Content-Type', 'application/x-www-form-urlencoded')
-            ->withBody($stream);
-
-        $response = $this->getClient()->sendRequest($request);
-
-        // Grab the body from the StreamInterface instance.
-        $content = $response->getBody()->getContents();
-
-        // Client or Server Exception
-        if ($response->getStatusCode() >= 400 && $response->getStatusCode() < 600) {
-            // Log the event as failed
-            $this->logger->error('[http ' . $response->getStatusCode() . ', ' .
-                strtolower($response->getReasonPhrase()) . '] ' .
-                'get -> ' . $this->sso_base . '/token'
-            );
-
-            // For debugging purposes, log the response body
-            $this->logger->debug('Request for get -> ' . $this->sso_base . '/token failed. Response body was: ' .
-                $content);
-
-            // Raise the exception that should be handled by the caller
-            throw new RequestFailedException($this->makeEsiResponse(
-                $content,
-                $response->getHeaders(),
-                'now',
-                $response->getStatusCode())
-            );
-        }
-
-        $json = json_decode($content);
-
-        // Get the current EsiAuth container
-        $authentication = $this->getAuthentication();
-
-        $claims = $this->jwt_validator->validateToken($authentication->client_id, $json->access_token);
-        $this->logger->debug('Successfully validate delivered token', [
-            'claims' => $claims,
-        ]);
-
-        // Set the new authentication values from the request
-        $authentication->access_token = $json->access_token;
-        $authentication->refresh_token = $json->refresh_token;
-        $authentication->token_expires = $claims['exp'];
-        $authentication->scopes = $claims['scp'];
-
-        // ... and update the container
-        $this->setAuthentication($authentication);
-    }
-
-    /**
-     * @return string
-     */
-    private function getBasicAuthorizationHeader(): string
-    {
-        return 'Basic ' . base64_encode($this->authentication->client_id . ':' . $this->authentication->secret);
     }
 
     /**
@@ -262,19 +192,6 @@ class Fetcher implements FetcherInterface
     private function getBearerAuthorizationHeader(): string
     {
         return 'Bearer ' . $this->getToken();
-    }
-
-    /**
-     * @return string
-     */
-    private function getRefreshTokenForm(): string
-    {
-        $form = [
-            'grant_type' => 'refresh_token',
-            'refresh_token' => $this->authentication->refresh_token,
-        ];
-
-        return http_build_query($form);
     }
 
     /**
@@ -294,9 +211,9 @@ class Fetcher implements FetcherInterface
         // Include some basic headers to those already passed in. Everything
         // is considered to be json.
         $headers = array_merge($headers, [
-            'Accept'       => 'application/json',
+            'Accept' => 'application/json',
             'Content-Type' => 'application/json',
-            'User-Agent'   => 'Eseye/' . Eseye::VERSION . '/' . Configuration::getInstance()->http_user_agent,
+            'User-Agent' => 'Eseye/' . Eseye::VERSION . '/' . Configuration::getInstance()->http_user_agent,
         ]);
 
         // Add some debug logging and start measuring how long the request took.

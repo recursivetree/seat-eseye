@@ -27,6 +27,7 @@ use Psr\Http\Message\UriInterface;
 use Psr\Log\LoggerInterface;
 use Psr\SimpleCache\CacheInterface;
 use Seat\Eseye\Access\AccessInterface;
+use Seat\Eseye\Access\AccessTokenRefresherInterface;
 use Seat\Eseye\Access\CheckAccess;
 use Seat\Eseye\Containers\EsiAuthentication;
 use Seat\Eseye\Containers\EsiResponse;
@@ -149,6 +150,14 @@ class Eseye
         $this->access_checker = $checker;
 
         return $this;
+    }
+
+    /**
+     * @throws InvalidContainerDataException
+     */
+    public function getAccessTokenRefresher(): AccessTokenRefresherInterface
+    {
+        return $this->getConfiguration()->getAccessTokenRefresher();
     }
 
     /**
@@ -359,10 +368,10 @@ class Eseye
 
         return Uri::fromParts([
             'scheme' => $this->getConfiguration()->esi_scheme,
-            'host'   => $this->getConfiguration()->esi_host,
-            'port'   => $this->getConfiguration()->esi_port,
-            'path'   => rtrim($this->getVersion(), '/') . $this->mapDataToUri($endpoint, $data),
-            'query'  => http_build_query($query_params),
+            'host' => $this->getConfiguration()->esi_host,
+            'port' => $this->getConfiguration()->esi_port,
+            'path' => rtrim($this->getVersion(), '/') . $this->mapDataToUri($endpoint, $data),
+            'query' => http_build_query($query_params),
         ]);
     }
 
@@ -535,5 +544,16 @@ class Eseye
         $this->setQueryString(['page' => $page]);
 
         return $this;
+    }
+
+    /**
+     * @return EsiAuthentication
+     *
+     * @throws InvalidAuthenticationException
+     * @throws InvalidContainerDataException
+     */
+    public function getValidAccessToken(): EsiAuthentication
+    {
+        return $this->getAccessTokenRefresher()->getValidAccessToken($this->getAuthentication());
     }
 }
