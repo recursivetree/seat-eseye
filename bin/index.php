@@ -365,19 +365,19 @@ switch ($_GET['action']) {
         // Seems like CCP does not mind JSON in the body. Yay.
         $fields = [
             'grant_type' => 'authorization_code',
-            'code'       => $_REQUEST['code'],
+            'code' => $_REQUEST['code'],
         ];
 
         // Start a cURL session
         $ch = curl_init('https://login.eveonline.com/v2/oauth/token');
         curl_setopt_array($ch, [
-            CURLOPT_URL             => 'https://login.eveonline.com/v2/oauth/token',
-            CURLOPT_POST            => true,
-            CURLOPT_POSTFIELDS      => implode('&', array_map(function ($value, $field) { return implode('=', [$field, $value]); }, $fields, array_keys($fields))),
-            CURLOPT_HTTPHEADER      => $headers,
-            CURLOPT_RETURNTRANSFER  => true,
-            CURLOPT_USERAGENT       => 'eseye/tokengenerator',
-            CURLOPT_SSL_VERIFYPEER  => true,
+            CURLOPT_URL => 'https://login.eveonline.com/v2/oauth/token',
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => implode('&', array_map(function ($value, $field) { return implode('=', [$field, $value]); }, $fields, array_keys($fields))),
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_USERAGENT => 'eseye/tokengenerator',
+            CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_CIPHER_LIST => 'TLSv1',
         ]);
 
